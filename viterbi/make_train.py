@@ -15,7 +15,7 @@ def write_train(df):
 
 def write_val(df):
     f1 = open("./port.dev", "w")
-    f2 = open("./port.key", "w")
+    f2 = open("./port_key.txt", "w")
     for index, row in df.iterrows():
         src = row["source"]
         tgt = row["target"]

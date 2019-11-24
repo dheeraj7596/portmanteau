@@ -1,4 +1,25 @@
-from .data_utils import get_token
+import re
+
+
+def get_token(word, flag):
+    """
+    Grouping rare words into classes
+    :param word:
+    :param flag:
+    :return:
+    """
+    if flag == 1:
+        return "_RARE_"
+    elif flag == 2:
+        if bool(re.search(r'\d', word)):
+            return "AlphaNum"
+        else:
+            return "oThEr"
+    elif flag == 3:
+        if word[-3:] == "ing":
+            return "enDiNg"
+        else:
+            return "oThEr"
 
 
 def create_count_dict(path):

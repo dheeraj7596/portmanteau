@@ -1,5 +1,14 @@
-from util import *
-from data_utils import get_viterbi_X
+from viterbi.util import *
+from viterbi.data_utils import get_viterbi_X
+
+count_dict = {}
+fourgram_count_dict = {}
+trigram_count_dict = {}
+bigram_count_dict = {}
+unigram_count_dict = {}
+unigram_dict = {}
+vocab = None
+n = 0
 
 
 def get_K(n):
@@ -8,7 +17,7 @@ def get_K(n):
     K[-1] = ["*"]
     K[0] = ["*"]
     for i in range(1, n + 1):
-        K[i] = ["O", "I-GENE"]
+        K[i] = ["C", "D"]
     return K
 
 
@@ -114,6 +123,7 @@ def viterbi_alg(X, count_dict, fourgram_count_dict, trigram_count_dict, bigram_c
                         try:
                             temp = vocab[temp_x]
                         except:
+                            print("In exception")
                             temp_x = get_token(temp_x, rare_flag)
                         em = emission_probs(count_dict, v, temp_x)
                         temp = pi[(k - 1, w, x, u)] * q * em
@@ -133,14 +143,58 @@ def viterbi_alg(X, count_dict, fourgram_count_dict, trigram_count_dict, bigram_c
     return y[1:]
 
 
+def set_global_vars():
+    global count_dict, fourgram_count_dict, trigram_count_dict, bigram_count_dict, unigram_count_dict, unigram_dict, vocab, n, lambda1, lambda2, lambda3, lambda4
+
+    lambda1 = 1
+    lambda2 = 0
+    lambda3 = 0
+    lambda4 = 0
+    path = "./port.counts"
+    train_path = "./port.train"
+    if not count_dict:
+        count_dict = create_count_dict(path)
+    if not fourgram_count_dict:
+        fourgram_count_dict = create_fourgram_count_dict(path)
+    if not trigram_count_dict:
+        trigram_count_dict = create_trigram_count_dict(path)
+    if not bigram_count_dict:
+        bigram_count_dict = create_bigram_count_dict(path)
+    if not unigram_count_dict:
+        unigram_count_dict = create_unigram_count_dict(path)
+    if not unigram_dict:
+        count = 0
+        for p in unigram_count_dict:
+            count += unigram_count_dict[p]
+
+        for p in unigram_count_dict:
+            unigram_dict[p] = unigram_count_dict[p] / count
+    if not vocab:
+        vocab = build_vocab(train_path)
+    n = 0
+
+
+def predict(data):
+    global count_dict, fourgram_count_dict, trigram_count_dict, bigram_count_dict, unigram_count_dict, unigram_dict, vocab, n
+    set_global_vars()
+    x = data[0] + "}" + data[1]
+    y = viterbi_alg(x, count_dict, fourgram_count_dict, trigram_count_dict, bigram_count_dict, unigram_count_dict,
+                    unigram_dict, vocab, n)
+    ans = ""
+    for i, p in enumerate(y):
+        if p == "C":
+            ans += x[i]
+    return ans
+
+
 if __name__ == "__main__":
-    import sys
+    import sys, math
 
-    n = int(sys.argv[1])
+    n = 0
 
-    path = "./gene.counts"
-    dev_path = "./gene.dev"
-    train_path = "./gene.train_modified"
+    path = "./port.counts"
+    dev_path = "./port.dev"
+    train_path = "./port.train"
 
     X = get_viterbi_X(dev_path)
     vocab = build_vocab(train_path)
@@ -158,10 +212,10 @@ if __name__ == "__main__":
     for p in unigram_count_dict:
         unigram_dict[p] = unigram_count_dict[p] / count
 
-    lambda1 = 0.2
-    lambda2 = 0.3
-    lambda3 = 0.2
-    lambda4 = 0.3
+    lambda1 = 1
+    lambda2 = 0
+    lambda3 = 0
+    lambda4 = 0
 
     lines = []
     for x in X:
@@ -172,7 +226,7 @@ if __name__ == "__main__":
             lines.append(line)
         lines.append("\n")
 
-    f1 = open("./gene_dev.p1.out", "w")
+    f1 = open("./port_dev.p1.out", "w")
     for line in lines:
         f1.write(line)
     f1.close()

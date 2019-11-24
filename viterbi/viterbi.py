@@ -7,7 +7,7 @@ def get_K(n):
     K[-1] = ["*"]
     K[0] = ["*"]
     for i in range(1, n + 1):
-        K[i] = ["O", "I-GENE"]
+        K[i] = ["C", "D"]
     return K
 
 
@@ -64,6 +64,7 @@ def viterbi_alg(X, count_dict, trigram_count_dict, bigram_count_dict, unigram_co
                     try:
                         temp = vocab[temp_x]
                     except:
+                        print("In exception")
                         temp_x = get_token(temp_x, rare_flag)
                     em = emission_probs(count_dict, v, temp_x)
                     temp = pi[(k - 1, w, u)] * q * em
@@ -84,7 +85,7 @@ def viterbi_alg(X, count_dict, trigram_count_dict, bigram_count_dict, unigram_co
 if __name__ == "__main__":
     import sys
 
-    n = int(sys.argv[1])
+    n = 0
     path = "./port.counts"
     dev_path = "./port.dev"
     train_path = "./port.train"
