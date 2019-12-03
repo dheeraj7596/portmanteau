@@ -9,7 +9,9 @@ from keras.models import load_model
 from keras.models import Model, Input
 from keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
 from keras_contrib.layers import CRF
+from utils import getTopk, get_word_by_tag
 import kenlm
+
 lmodel = kenlm.Model('./data/wordlist_english_filtered_threshold100-kenlm.arpa')
 
 model = None
@@ -17,6 +19,7 @@ word2idx = {}
 tag2idx = {}
 words = []
 tags = []
+
 
 def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
     input = Input(shape=(max_len,))
@@ -27,6 +30,7 @@ def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
     out = crf(model)
     model = Model(input, out)
     return model
+
 
 def get_model(max_len, n_words, n_tags, embedding_mat):
     input = Input(shape=(max_len,))
@@ -87,9 +91,26 @@ def predict(data):
     X = [[word2idx[w] for w in x]]
     X = pad_sequences(maxlen=max_len, sequences=X, padding="post", value=n_words - 1)
     p = model.predict(np.array([X[0]]))
-    p = np.argmax(p, axis=-1)
-    ans = get_word(X[0], p[0], words, tags)
+    # p = np.argmax(p, axis=-1)
+    ans = pred_one(X[0], p, words)
     return ans
+
+
+def pred_one(X, prediction, words):
+    global lmodel
+
+    predictions = getTopk(prediction[0], 10)
+    candidates = [get_word_by_tag(X, d[1], words) for d in predictions]
+    m_scores = [lmodel.score(" ".join(c)) / (float(len(" ".join(c)))) for c in candidates]
+    for j in range(len(m_scores)):
+        m_scores[j] = m_scores[j] / 8 + predictions[j][0]
+    max_idx = -1
+    max_val = -99999
+    for ele in enumerate(m_scores):
+        if ele[1] > max_val:
+            max_val = ele[1]
+            max_idx = ele[0]
+    return candidates[max_idx]
 
 
 if __name__ == "__main__":
@@ -125,25 +146,28 @@ if __name__ == "__main__":
     # model.compile(optimizer="rmsprop", loss=crf.loss_function, metrics=[crf.accuracy])
     # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
 
-    model = get_model(max_len, n_words, n_tags, embedding_mat)
-    print(model.summary())
-    model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
-    history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+    # model = get_model(max_len, n_words, n_tags, embedding_mat)
+    # print(model.summary())
+    # model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
+    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+    model = load_model("./lstm.h5")
 
     preds = []
     true = []
     for i, test in enumerate(X_te):
-        p = model.predict(np.array([X_te[i]]))
-
         t = y_te[i]
-        p = np.argmax(p, axis=-1)
         t = np.argmax(t, axis=-1)
 
-        preds.append(get_word(X_te[i], p[0], words, tags))
-        true.append(get_word(X_te[i], t, words, tags))
+        p = model.predict(np.array([X_te[i]]))
+        final_pred = pred_one(X_te[i], p, words)
+        preds.append(final_pred)
+        final_true = get_word(X_te[i], t, words, tags)
+        true.append(final_true)
+        if final_pred == final_true:
+            print(final_pred)
 
     distance = 0
     for i, word in enumerate(true):
         distance += Levenshtein.distance(word, preds[i])
     print(distance / len(preds))
-    # model.save("./lstm.h5")
+    model.save("./lstm.h5")
