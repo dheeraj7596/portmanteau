@@ -67,11 +67,11 @@ if __name__ == "__main__":
     y = [[tag2idx[w[1]] for w in s] for s in sentences]
     y = pad_sequences(maxlen=max_len, sequences=y, padding="post", value=tag2idx["O"])
     y = [to_categorical(i, num_classes=n_tags) for i in y]
-    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1)
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1,random_state=213)
 
     model = get_model(max_len, n_words, n_tags, embedding_mat)
     model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=["accuracy"])
-    history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+    history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=10, validation_split=0.1, verbose=1)
 
     preds = []
     true = []
@@ -88,3 +88,6 @@ if __name__ == "__main__":
     for i, word in enumerate(true):
         distance += Levenshtein.distance(word, preds[i])
     print(distance / len(preds))
+
+
+# 1.74 ,1.37 
