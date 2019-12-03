@@ -5,8 +5,31 @@ from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 import pickle
+from keras.models import load_model
 from keras.models import Model, Input
 from keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
+from keras_contrib.layers import CRF
+from utils import getTopk, get_word_by_tag
+import kenlm
+
+lmodel = kenlm.Model('./data/wordlist_english_filtered_threshold100-kenlm.arpa')
+
+model = None
+word2idx = {}
+tag2idx = {}
+words = []
+tags = []
+
+
+def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
+    input = Input(shape=(max_len,))
+    model = Embedding(input_dim=n_words, weights=[embedding_mat], output_dim=50, input_length=max_len)(input)
+    model = Dropout(0.1)(model)
+    model = Bidirectional(LSTM(units=100, return_sequences=True, recurrent_dropout=0.1))(model)
+    model = TimeDistributed(Dense(100, activation="relu"))(model)  # softmax output layer
+    out = crf(model)
+    model = Model(input, out)
+    return model
 
 
 def get_model(max_len, n_words, n_tags, embedding_mat):
@@ -44,10 +67,58 @@ def get_word(X, y, words, tags):
     return ans
 
 
+def predict(data):
+    global model, word2idx, tag2idx, words, tags
+    max_len = 30
+
+    if not model:
+        model = load_model("./lstm.h5")
+
+    if not word2idx:
+        word2idx = pickle.load(open("./word2idx.pkl", "rb"))
+
+    if not tag2idx:
+        tag2idx = pickle.load(open("./tag2idx.pkl", "rb"))
+
+    if not words:
+        words = pickle.load(open("./words.pkl", "rb"))
+
+    if not tags:
+        tags = pickle.load(open("./tags.pkl", "rb"))
+
+    n_words = len(words)
+    x = data[0].lower() + "}" + data[1].lower()
+    X = [[word2idx[w] for w in x]]
+    X = pad_sequences(maxlen=max_len, sequences=X, padding="post", value=n_words - 1)
+    p = model.predict(np.array([X[0]]))
+    # p = np.argmax(p, axis=-1)
+    ans = pred_one(X[0], p, words)
+    return ans
+
+
+def pred_one(X, prediction, words):
+    global lmodel
+
+    predictions = getTopk(prediction[0], 10)
+    candidates = [get_word_by_tag(X, d[1], words) for d in predictions]
+    m_scores = [lmodel.score(" ".join(c)) / (float(len(" ".join(c)))) for c in candidates]
+    for j in range(len(m_scores)):
+        m_scores[j] = m_scores[j] / 8 + predictions[j][0]
+    max_idx = -1
+    max_val = -99999
+    for ele in enumerate(m_scores):
+        if ele[1] > max_val:
+            max_val = ele[1]
+            max_idx = ele[0]
+    return candidates[max_idx]
+
+
 if __name__ == "__main__":
     data = pickle.load(open("./data/df_lstm.pkl", "rb"))
     embeddings_path = "./data/pretrained_char_emb.txt"
 
+    # data = ["gay", "baby"]
+    # ans = predict(data)
     words = list(set(data["Word"].values))
     words.append("$")
     n_words = len(words)
@@ -67,27 +138,36 @@ if __name__ == "__main__":
     y = [[tag2idx[w[1]] for w in s] for s in sentences]
     y = pad_sequences(maxlen=max_len, sequences=y, padding="post", value=tag2idx["O"])
     y = [to_categorical(i, num_classes=n_tags) for i in y]
-    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1,random_state=213)
+    X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1)
 
-    model = get_model(max_len, n_words, n_tags, embedding_mat)
-    model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=["accuracy"])
-    history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=10, validation_split=0.1, verbose=1)
+    # crf = CRF(n_tags)
+    # model = get_model_crf(max_len, n_words, n_tags, embedding_mat, crf)
+    # print(model.summary())
+    # model.compile(optimizer="rmsprop", loss=crf.loss_function, metrics=[crf.accuracy])
+    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+
+    # model = get_model(max_len, n_words, n_tags, embedding_mat)
+    # print(model.summary())
+    # model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
+    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+    model = load_model("./lstm.h5")
 
     preds = []
     true = []
     for i, test in enumerate(X_te):
-        p = model.predict(np.array([X_te[i]]))
         t = y_te[i]
-        p = np.argmax(p, axis=-1)
         t = np.argmax(t, axis=-1)
 
-        preds.append(get_word(X_te[i], p[0], words, tags))
-        true.append(get_word(X_te[i], t, words, tags))
+        p = model.predict(np.array([X_te[i]]))
+        final_pred = pred_one(X_te[i], p, words)
+        preds.append(final_pred)
+        final_true = get_word(X_te[i], t, words, tags)
+        true.append(final_true)
+        if final_pred == final_true:
+            print(final_pred)
 
     distance = 0
     for i, word in enumerate(true):
         distance += Levenshtein.distance(word, preds[i])
     print(distance / len(preds))
-
-
-# 1.74 ,1.37 
+    model.save("./lstm.h5")
