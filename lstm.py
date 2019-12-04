@@ -5,12 +5,19 @@ from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 import pickle
-from keras.models import load_model
 from keras.models import Model, Input
 from keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
-from keras_contrib.layers import CRF
-from utils import getTopk, get_word_by_tag
+from keras import optimizers
 import kenlm
+import pandas as pd
+import seaborn as sns
+import pylab as pl
+from sklearn.linear_model import BayesianRidge
+from sklearn.metrics import r2_score
+import heapq
+from collections import defaultdict 
+from keras.models import load_model
+from utils import *
 
 lmodel = kenlm.Model('./data/wordlist_english_filtered_threshold100-kenlm.arpa')
 
@@ -21,15 +28,15 @@ words = []
 tags = []
 
 
-def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
-    input = Input(shape=(max_len,))
-    model = Embedding(input_dim=n_words, weights=[embedding_mat], output_dim=50, input_length=max_len)(input)
-    model = Dropout(0.1)(model)
-    model = Bidirectional(LSTM(units=100, return_sequences=True, recurrent_dropout=0.1))(model)
-    model = TimeDistributed(Dense(100, activation="relu"))(model)  # softmax output layer
-    out = crf(model)
-    model = Model(input, out)
-    return model
+# def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
+#     input = Input(shape=(max_len,))
+#     model = Embedding(input_dim=n_words, weights=[embedding_mat], output_dim=50, input_length=max_len)(input)
+#     model = Dropout(0.1)(model)
+#     model = Bidirectional(LSTM(units=100, return_sequences=True, recurrent_dropout=0.1))(model)
+#     model = TimeDistributed(Dense(100, activation="relu"))(model)  # softmax output layer
+#     out = crf(model)
+#     model = Model(input, out)
+#     return model
 
 
 def get_model(max_len, n_words, n_tags, embedding_mat):
@@ -103,7 +110,7 @@ def pred_one(X, prediction, words):
     candidates = [get_word_by_tag(X, d[1], words) for d in predictions]
     m_scores = [lmodel.score(" ".join(c)) / (float(len(" ".join(c)))) for c in candidates]
     for j in range(len(m_scores)):
-        m_scores[j] = m_scores[j] / 8 + predictions[j][0]
+        m_scores[j] = m_scores[j]/8 + predictions[j][0]
     max_idx = -1
     max_val = -99999
     for ele in enumerate(m_scores):
@@ -130,7 +137,7 @@ if __name__ == "__main__":
     max_len = 30
     word2idx = {w: i for i, w in enumerate(words)}
     tag2idx = {t: i for i, t in enumerate(tags)}
-
+    print(word2idx)
     embedding_mat = get_embedding_matrix(embeddings_path, word2idx)
 
     X = [[word2idx[w[0]] for w in s] for s in sentences]
@@ -139,7 +146,7 @@ if __name__ == "__main__":
     y = pad_sequences(maxlen=max_len, sequences=y, padding="post", value=tag2idx["O"])
     y = [to_categorical(i, num_classes=n_tags) for i in y]
     X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1)
-
+    # print(X_tr[:5],y_tr[:5])
     # crf = CRF(n_tags)
     # model = get_model_crf(max_len, n_words, n_tags, embedding_mat, crf)
     # print(model.summary())
@@ -149,15 +156,14 @@ if __name__ == "__main__":
     # model = get_model(max_len, n_words, n_tags, embedding_mat)
     # print(model.summary())
     # model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
-    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
-    model = load_model("./lstm.h5")
+    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=1, validation_split=0.1, verbose=1)
+    model = load_model("./keras_jupyper.h5")
 
     preds = []
     true = []
     for i, test in enumerate(X_te):
         t = y_te[i]
         t = np.argmax(t, axis=-1)
-
         p = model.predict(np.array([X_te[i]]))
         final_pred = pred_one(X_te[i], p, words)
         preds.append(final_pred)
@@ -170,4 +176,4 @@ if __name__ == "__main__":
     for i, word in enumerate(true):
         distance += Levenshtein.distance(word, preds[i])
     print(distance / len(preds))
-    model.save("./lstm.h5")
+    # model.save("./lstm.h5")
