@@ -18,6 +18,7 @@ import heapq
 from collections import defaultdict 
 from keras.models import load_model
 from utils import *
+from collections import Counter
 
 lmodel = kenlm.Model('./data/wordlist_english_filtered_threshold100-kenlm.arpa')
 
@@ -26,7 +27,7 @@ word2idx = {}
 tag2idx = {}
 words = []
 tags = []
-
+len_model = None
 
 # def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
 #     input = Input(shape=(max_len,))
@@ -37,6 +38,21 @@ tags = []
 #     out = crf(model)
 #     model = Model(input, out)
 #     return model
+
+def train_len_model():
+	def get_len(row):
+	    return Counter(list(row))['C']
+	df = pd.read_csv('./data/components-blends-knight.csv',sep='\t',index_col=0)
+	df["slen"]=df.source.apply(len)
+	df["tlen"]=df.target.apply(get_len)
+	df["ratio"]=df["slen"]/df["tlen"]
+	len_model = BayesianRidge(verbose=True, compute_score=True)
+	X=df["slen"].values.reshape(-1,1)
+	y=df["tlen"].values
+	from sklearn.model_selection import train_test_split
+	X_train, X_test, y_train, y_test=train_test_split(X, y)
+	len_model.fit(X_train, y_train)
+	return len_model
 
 
 def get_model(max_len, n_words, n_tags, embedding_mat):
@@ -75,7 +91,7 @@ def get_word(X, y, words, tags):
 
 
 def predict(data):
-    global model, word2idx, tag2idx, words, tags
+    global model, word2idx, tag2idx, words, tags, len_model
     max_len = 30
 
     if not model:
@@ -93,6 +109,9 @@ def predict(data):
     if not tags:
         tags = pickle.load(open("./tags.pkl", "rb"))
 
+    if not len_model:
+    	len_model = train_len_model()
+
     n_words = len(words)
     x = data[0].lower() + "}" + data[1].lower()
     X = [[word2idx[w] for w in x]]
@@ -104,13 +123,16 @@ def predict(data):
 
 
 def pred_one(X, prediction, words):
-    global lmodel
+    global lmodel, len_model
 
     predictions = getTopk(prediction[0], 10)
     candidates = [get_word_by_tag(X, d[1], words) for d in predictions]
     m_scores = [lmodel.score(" ".join(c)) / (float(len(" ".join(c)))) for c in candidates]
+    input_len = [len_model.predict([[p[1].index('O')]])[0] if 'O' in p[1] else 30 for p in predictions]
+    lstm_len = [(p[1].index('O') - p[1].count('D')) if 'O' in p[1] else 30 for p in predictions]
+    len_score = [1/(1+(abs(i-l))) for l,i in zip(lstm_len,input_len)]
     for j in range(len(m_scores)):
-        m_scores[j] = m_scores[j]/8 + predictions[j][0]
+        m_scores[j] = m_scores[j]/8 + predictions[j][0] + len_score[j]/45
     max_idx = -1
     max_val = -99999
     for ele in enumerate(m_scores):
@@ -137,7 +159,6 @@ if __name__ == "__main__":
     max_len = 30
     word2idx = {w: i for i, w in enumerate(words)}
     tag2idx = {t: i for i, t in enumerate(tags)}
-    print(word2idx)
     embedding_mat = get_embedding_matrix(embeddings_path, word2idx)
 
     X = [[word2idx[w[0]] for w in s] for s in sentences]
@@ -158,7 +179,7 @@ if __name__ == "__main__":
     # model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
     # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=1, validation_split=0.1, verbose=1)
     model = load_model("./keras_jupyper.h5")
-
+    len_model = train_len_model()
     preds = []
     true = []
     for i, test in enumerate(X_te):
