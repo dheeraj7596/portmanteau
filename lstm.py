@@ -47,6 +47,7 @@ def train_len_model():
     from sklearn.model_selection import train_test_split
     X_train, X_test, y_train, y_test = train_test_split(X, y)
     len_model.fit(X_train, y_train)
+    pickle.dump(len_model, open("./dumps/len_model.pkl", "wb"))
     return len_model
 
 
