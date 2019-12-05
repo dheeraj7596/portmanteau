@@ -156,9 +156,11 @@ if __name__ == "__main__":
     n_tags = len(tags)
     getter = SentenceGetter(data)
     sentences = getter.sentences
+    # print(sentences[0])
     max_len = 30
     word2idx = {w: i for i, w in enumerate(words)}
     tag2idx = {t: i for i, t in enumerate(tags)}
+    print(tag2idx)
     embedding_mat = get_embedding_matrix(embeddings_path, word2idx)
 
     X = [[word2idx[w[0]] for w in s] for s in sentences]
@@ -174,11 +176,11 @@ if __name__ == "__main__":
     # model.compile(optimizer="rmsprop", loss=crf.loss_function, metrics=[crf.accuracy])
     # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
 
-    # model = get_model(max_len, n_words, n_tags, embedding_mat)
-    # print(model.summary())
-    # model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
-    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=1, validation_split=0.1, verbose=1)
-    model = load_model("./keras_jupyper.h5")
+    model = get_model(max_len, n_words, n_tags, embedding_mat)
+    print(model.summary())
+    model.compile(optimizer="rmsprop", loss="mse", metrics=['accuracy'])
+    history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+    # model = load_model("./keras_jupyper.h5")
     len_model = train_len_model()
     preds = []
     true = []
