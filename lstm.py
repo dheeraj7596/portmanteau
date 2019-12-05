@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     model = get_model(max_len, n_words, n_tags, embedding_mat)
     print(model.summary())
-    model.compile(optimizer="rmsprop", loss="mse", metrics=['accuracy'])
+    model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
     history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
     # model = load_model("./keras_jupyper.h5")
     len_model = train_len_model()
