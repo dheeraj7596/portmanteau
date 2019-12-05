@@ -181,6 +181,8 @@ if __name__ == "__main__":
     len_model = train_len_model()
     preds = []
     true = []
+    distance = 0
+
     for i, test in enumerate(X_te):
         t = y_te[i]
         t = np.argmax(t, axis=-1)
@@ -192,8 +194,23 @@ if __name__ == "__main__":
         if final_pred == final_true:
             print(final_pred)
 
-    distance = 0
+    for i, test in enumerate(X_tr):
+        t = y_tr[i]
+        t = np.argmax(t, axis=-1)
+        p = model.predict(np.array([X_tr[i]]))
+        final_pred = pred_one(X_tr[i], p, words, tag2idx)
+        preds.append(final_pred)
+        final_true = get_word(X_tr[i], t, words, tags)
+        true.append(final_true)
+        if final_pred == final_true:
+            print(final_pred)
+
     for i, word in enumerate(true):
         distance += Levenshtein.distance(word, preds[i])
     print(distance / len(preds))
-    # model.save("./lstm.h5")
+
+    model.save("./dumps/lstm.h5")
+    pickle.dump(tag2idx, open("./dumps/tag2idx.pkl", "wb"))
+    pickle.dump(tags, open("./dumps/tags.pkl", "wb"))
+    pickle.dump(word2idx, open("./dumps/word2idx.pkl", "wb"))
+    pickle.dump(words, open("./dumps/words.pkl", "wb"))
