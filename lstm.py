@@ -1,5 +1,4 @@
 import Levenshtein
-import numpy as np
 from sentence_getter import SentenceGetter
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
@@ -7,15 +6,9 @@ from sklearn.model_selection import train_test_split
 import pickle
 from keras.models import Model, Input
 from keras.layers import LSTM, Embedding, Dense, TimeDistributed, Dropout, Bidirectional
-from keras import optimizers
 import kenlm
 import pandas as pd
-import seaborn as sns
-import pylab as pl
 from sklearn.linear_model import BayesianRidge
-from sklearn.metrics import r2_score
-import heapq
-from collections import defaultdict 
 from keras.models import load_model
 from utils import *
 from collections import Counter
@@ -29,6 +22,7 @@ words = []
 tags = []
 len_model = None
 
+
 # def get_model_crf(max_len, n_words, n_tags, embedding_mat, crf):
 #     input = Input(shape=(max_len,))
 #     model = Embedding(input_dim=n_words, weights=[embedding_mat], output_dim=50, input_length=max_len)(input)
@@ -40,19 +34,20 @@ len_model = None
 #     return model
 
 def train_len_model():
-	def get_len(row):
-	    return Counter(list(row))['C']
-	df = pd.read_csv('./data/components-blends-knight.csv',sep='\t',index_col=0)
-	df["slen"]=df.source.apply(len)
-	df["tlen"]=df.target.apply(get_len)
-	df["ratio"]=df["slen"]/df["tlen"]
-	len_model = BayesianRidge(verbose=True, compute_score=True)
-	X=df["slen"].values.reshape(-1,1)
-	y=df["tlen"].values
-	from sklearn.model_selection import train_test_split
-	X_train, X_test, y_train, y_test=train_test_split(X, y)
-	len_model.fit(X_train, y_train)
-	return len_model
+    def get_len(row):
+        return Counter(list(row))['C']
+
+    df = pd.read_csv('./data/components-blends-knight.csv', sep='\t', index_col=0)
+    df["slen"] = df.source.apply(len)
+    df["tlen"] = df.target.apply(get_len)
+    df["ratio"] = df["slen"] / df["tlen"]
+    len_model = BayesianRidge(verbose=True, compute_score=True)
+    X = df["slen"].values.reshape(-1, 1)
+    y = df["tlen"].values
+    from sklearn.model_selection import train_test_split
+    X_train, X_test, y_train, y_test = train_test_split(X, y)
+    len_model.fit(X_train, y_train)
+    return len_model
 
 
 def get_model(max_len, n_words, n_tags, embedding_mat):
@@ -110,7 +105,7 @@ def predict(data):
         tags = pickle.load(open("./tags.pkl", "rb"))
 
     if not len_model:
-    	len_model = train_len_model()
+        len_model = train_len_model()
 
     n_words = len(words)
     x = data[0].lower() + "}" + data[1].lower()
@@ -118,21 +113,22 @@ def predict(data):
     X = pad_sequences(maxlen=max_len, sequences=X, padding="post", value=n_words - 1)
     p = model.predict(np.array([X[0]]))
     # p = np.argmax(p, axis=-1)
-    ans = pred_one(X[0], p, words)
+    ans = pred_one(X[0], p, words, tag2idx)
     return ans
 
 
-def pred_one(X, prediction, words):
+def pred_one(X, prediction, words, tag2idx):
     global lmodel, len_model
 
-    predictions = getTopk(prediction[0], 10)
+    predictions = getTopk(prediction[0], 10, tag2idx)
     candidates = [get_word_by_tag(X, d[1], words) for d in predictions]
     m_scores = [lmodel.score(" ".join(c)) / (float(len(" ".join(c)))) for c in candidates]
     input_len = [len_model.predict([[p[1].index('O')]])[0] if 'O' in p[1] else 30 for p in predictions]
     lstm_len = [(p[1].index('O') - p[1].count('D')) if 'O' in p[1] else 30 for p in predictions]
-    len_score = [1/(1+(abs(i-l))) for l,i in zip(lstm_len,input_len)]
+    len_score = [1 / (1 + (abs(i - l))) for l, i in zip(lstm_len, input_len)]
     for j in range(len(m_scores)):
-        m_scores[j] = m_scores[j]/8 + predictions[j][0] + len_score[j]/45
+        # m_scores[j] = predictions[j][0]
+        m_scores[j] = m_scores[j] / 8 + predictions[j][0] + len_score[j] / 45
     max_idx = -1
     max_val = -99999
     for ele in enumerate(m_scores):
@@ -167,6 +163,7 @@ if __name__ == "__main__":
     y = pad_sequences(maxlen=max_len, sequences=y, padding="post", value=tag2idx["O"])
     y = [to_categorical(i, num_classes=n_tags) for i in y]
     X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.1)
+
     # print(X_tr[:5],y_tr[:5])
     # crf = CRF(n_tags)
     # model = get_model_crf(max_len, n_words, n_tags, embedding_mat, crf)
@@ -174,11 +171,12 @@ if __name__ == "__main__":
     # model.compile(optimizer="rmsprop", loss=crf.loss_function, metrics=[crf.accuracy])
     # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
 
-    # model = get_model(max_len, n_words, n_tags, embedding_mat)
-    # print(model.summary())
-    # model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
-    # history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=1, validation_split=0.1, verbose=1)
-    model = load_model("./keras_jupyper.h5")
+    model = get_model(max_len, n_words, n_tags, embedding_mat)
+    print(model.summary())
+    model.compile(optimizer="rmsprop", loss="categorical_crossentropy", metrics=['accuracy'])
+    history = model.fit(X_tr, np.array(y_tr), batch_size=32, epochs=5, validation_split=0.1, verbose=1)
+
+    # model = load_model("./keras_jupyper.h5")
     len_model = train_len_model()
     preds = []
     true = []
@@ -186,7 +184,7 @@ if __name__ == "__main__":
         t = y_te[i]
         t = np.argmax(t, axis=-1)
         p = model.predict(np.array([X_te[i]]))
-        final_pred = pred_one(X_te[i], p, words)
+        final_pred = pred_one(X_te[i], p, words, tag2idx)
         preds.append(final_pred)
         final_true = get_word(X_te[i], t, words, tags)
         true.append(final_true)

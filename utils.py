@@ -17,9 +17,10 @@ def get_word_by_tag(X, y, words):
     return ans
 
 
-def getTopk(m, k):
-    mapping = {0: 'C', 1: 'D', 2: 'O'}
-    r_mapping = {'C': 0, 'D': 1, 'O': 2}
+def getTopk(m, k, r_mapping):
+    mapping = {}
+    for tag in r_mapping:
+        mapping[r_mapping[tag]] = tag
     best_seq = ""
     best_prob = 1.0
     best_idx = np.argmax(m, axis=-1)
